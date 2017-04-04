@@ -6,8 +6,8 @@ import com.google.common.collect.ImmutableList;
 import org.sonar.check.Priority;
 import org.sonar.check.Rule;
 import org.sonar.plugins.java.api.IssuableSubscriptionVisitor;
-import org.sonar.plugins.java.api.semantic.Symbol.MethodSymbol;
-import org.sonar.plugins.java.api.semantic.Type;
+//import org.sonar.plugins.java.api.semantic.Symbol.MethodSymbol;
+//import org.sonar.plugins.java.api.semantic.Type;
 import org.sonar.plugins.java.api.tree.*;
 import org.sonar.plugins.java.api.tree.Tree.Kind;
 
@@ -15,29 +15,51 @@ import java.util.List;
 
 @Rule(
 		  key = "GandalfRulePlugin",
-		  name = "Return type and parameter of a method should not be the same",
-		  description = "For a method having a single parameter, the types of its return value and its parameter should never be the same.",
+		  name = "More than 2 nested loops",
+		  description = "Raises a warning if it finds more than 2 nested loops",
 		  priority = Priority.INFO,
 		  tags = {"style"})
-public class GandalfRulePlugin extends IssuableSubscriptionVisitor {
 
-  @Override
-  public List<Kind> nodesToVisit() {
-	  return ImmutableList.of(Kind.METHOD);
-  }
+public class GandalfRulePlugin extends IssuableSubscriptionVisitor {
+	@Override
+	public List<Kind> nodesToVisit() {
+		final Kind[] LOOP_STATEMENTS = {
+				Kind.FOR_STATEMENT, 
+				Kind.FOR_EACH_STATEMENT,
+				Kind.WHILE_STATEMENT,
+				Kind.DO_STATEMENT
+		};
+		return ImmutableList.copyOf(LOOP_STATEMENTS);
+	}
   
-  @Override
-  public void visitNode(Tree tree) {
-    MethodTree method = (MethodTree) tree;
-    if (method.parameters().size() == 1) {
-      MethodSymbol symbol = method.symbol();
-      Type firstParameterType = symbol.parameterTypes().get(0);
-      Type returnType = symbol.returnType().type();
-      if (returnType.is(firstParameterType.fullyQualifiedName())) {
-        reportIssue(method.simpleName(), "This method has a return type that is the same of the only parameter type!");
-      }
-    }
-  }
- 
-  
+	private static boolean isLoopStatement(StatementTree stat){
+		return stat.is(Kind.FOR_STATEMENT) || stat.is(Kind.FOR_EACH_STATEMENT) || stat.is(Kind.WHILE_STATEMENT) || stat.is(Kind.DO_STATEMENT);
+	}
+	
+	@Override
+	public void visitNode(Tree tree) {
+		int nLoops = 0;
+		StatementTree myParent = (StatementTree) tree; //inizializzo il parent uguale a me stesso
+		boolean methodsFound = false;
+		
+		while(methodsFound == false){
+			if(isLoopStatement(myParent)){
+				nLoops++;
+			}
+		    if(myParent.parent().is(Kind.BLOCK)){ //se mio "padre" è di tipo BLOCK controllo il "nonno"
+				if(myParent.parent().parent().is(Kind.METHOD)){ //se mio "nonno" è di tipo METHOD mi devo fermare, ho analizzato tutto il metodo
+					methodsFound = true;
+				}
+				else{ //se mio "nonno" non è un METHOD devo continuare ad adanizzare
+					myParent = (StatementTree) myParent.parent().parent();
+				}
+			}
+			else{ //se mio "padre" non è di tipo block potrebbe essere o "LOOP_STATEMENT" o "IF_STATEMENT"
+				myParent = (StatementTree) myParent.parent();
+			}
+		}
+		if(nLoops>2){
+			reportIssue(tree, "More than 2 nested loop");
+		}
+	}
 }
